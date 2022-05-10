@@ -1,6 +1,10 @@
 # introduction-a-react-javascript
 create app with react
 
+# program execution
+npm i
+npm start
+
 # Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).

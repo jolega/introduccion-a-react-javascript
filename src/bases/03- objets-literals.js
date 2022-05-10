@@ -34,4 +34,4 @@ person3.name  = 'Johan Leonardo' ;
 
 console.log(person2) ;
 console.log(person) ;
-console.log(person3) ;
+console.log(person3) ; 
