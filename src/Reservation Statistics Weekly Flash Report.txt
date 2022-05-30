@@ -1,0 +1,280 @@
+-- daily_kpi
+with
+   active as(
+  
+  select date_trunc('month',  to_date(GETDATE(),'YYYY MM DD')) as date ,count(*) as active_properties 
+ FROM  public.homes
+--view.myvrhomes_clean                                   
+where active='true'
+union
+select date_trunc('month',  to_date(month,'YYYY MM DD')) as date, active_properties
+from public.properties_by_month
+where   date_trunc('month',  to_date(month,'YYYY MM DD'))!=  date_trunc('month',  to_date(GETDATE(),'YYYY MM DD'))
+and  destinationtoregionid is null
+group by date_trunc('month',  to_date(month,'YYYY MM DD')),active_properties 
+
+
+   ),
+                    
+  activeContract as (
+  select date_trunc('month',  to_date(GETDATE(),'YYYY MM DD')) as date ,count(*) as active_exclusive_properties 
+ FROM view.myvrhomes_clean    as homes
+/*left join public.destination_region_mapping_csv as destination_region_mapping on
+    homes.destination_name = destination_region_mapping.destination   */                             
+where active='true' 
+and customfields_acontractmanagementtype in (
+    'Exclusive', 'Exclusive + Home Help','Sublet'
+    ) 
+union
+select date_trunc('month',  to_date(month,'YYYY MM DD')) as date, active_exclusive_properties
+from public.properties_by_month
+where   date_trunc('month',  to_date(month,'YYYY MM DD'))!=  date_trunc('month',  to_date(GETDATE(),'YYYY MM DD'))
+and  destinationtoregionid is null
+group by date_trunc('month',  to_date(month,'YYYY MM DD')),active_exclusive_properties 
+  
+  ),
+
+
+  inquiries as (
+with
+    distroORb2c
+    as
+    
+    (
+        select day, count(count) as total
+        from (
+      select
+            date_trunc('month',  to_date(inquiries.created,'YYYY MM DD')) as day           
+      , case   when  (lead_source.b2b_b2c  is null) then 'B2B' 
+        else lead_source.b2b_b2c end as channel   
+      , inquiries.guestemail  
+      , inquiries.destination
+      , to_date(inquiries.checkin,'YYYY MM DD') as check_in_date
+      , to_date(inquiries.checkout,'YYYY MM DD') as check_out_date                            
+      , inquiries.sourcename as lead_source
+                                    , count (*)
+
+            from
+                view.myvrinquiries_clean as inquiries
+                left join view.lead_source_may as  lead_source
+                on lower(inquiries.sourcename) = lower(lead_source.myvr_lead_source)
+                left join public.destination_region_mapping_csv as destination_region_mapping on
+          inquiries.destination = destination_region_mapping.destination
+	where
+             channel  in (
+          'B2C'
+          , 'DISTRO'
+        )
+            group by
+        1
+        , 2
+        , 3
+        , 4
+        , 5
+        , 6
+      ,7  
+  )
+        group by 1
+
+    )
+,
+    b2b
+    as
+    (
+        select day, sum(count) as total
+        from (
+	select
+            date_trunc('month',  to_date(inquiries.created,'YYYY MM DD')) as day           
+  , case   when  (lead_source.b2b_b2c  is null) then 'B2B' 
+    else lead_source.b2b_b2c end as channel   
+  
+                                , count (*)
+
+            from
+                view.myvrinquiries_clean as inquiries
+                left join view.lead_source_may as  lead_source
+                on lower(inquiries.sourcename) = lower(lead_source.myvr_lead_source)
+                left join public.destination_region_mapping_csv as destination_region_mapping on
+    inquiries.destination = destination_region_mapping.destination
+	where
+            channel  not in (
+    'B2C'
+    , 'DISTRO' 
+  )
+            group by
+  1
+  , 2
+)
+        group by 1
+
+    )
+
+select nvl(distroORb2c.day, b2b.day) as date, nvl(distroORb2c.total,0) + nvl(b2b.total,0) as inquiries
+from
+    distroORb2c
+   full  join b2b on distroORb2c.day= b2b.day
+
+--group by 1
+order by 1 desc
+
+)
+  , reservations as
+(
+    select date, sum(reservations) as reservations
+ , sum(total_rent_amount) as total_rent_amount
+ , sum(oasis_commission_amount)  as oasis_commission_amount
+  , avg(average_length_of_stay) as average_length_of_stay
+        , avg(average_daily_revenue) as average_daily_revenue
+        , sum(nights_stayed) as nights_stayed
+        , sum(total_due_from_customer) as total_due_from_customer
+
+
+from (
+  WITH 
+       reservation_kpi AS (
+        select*
+        from
+        view.reservation_kpi
+        where contract_management_type != 'Sublet'
+        
+        ), 
+   reservation_sublet AS(
+     select  DISTINCT
+     LAST_DAY(datePeriod) as  date 
+    ,checkin
+    ,checkout
+    ,city
+    ,destination
+    ,neighborhood
+    ,home_name
+    ,lead_source
+    ,agent
+    ,contract_management_type
+   ,vacasa_migrated
+   ,active
+   ,reservations
+   ,length_of_stay
+   ,average_length_of_stay
+   ,average_daily_revenue
+   ,total_rent_amount
+   ,commission_amount
+   ,total_due_from_customer
+      from view.reservation_datePeriod
+      CROSS JOIN view.reservation_kpi
+      where  contract_management_type  = 'Sublet' and datePeriod between checkin and checkout
+     )
+                 
+      select
+        --to_date(date,'YYYY MM DD') as date
+        date_trunc('month',  to_date(date,'YYYY MM DD')) as date
+
+        , contract_management_type
+        , sum(reservations) as reservations
+        , sum(total_rent_amount) as total_rent_amount
+        , case
+          when lower(contract_management_type) <> 'sublet'
+            then sum(commission_amount)
+          else 0
+        end  as oasis_commission_amount
+        --, sum(commission_amount) as oasis_commission_amount
+        , avg(average_length_of_stay) as average_length_of_stay
+        , avg(average_daily_revenue) as average_daily_revenue
+        , sum(length_of_stay) as nights_stayed
+        , sum(total_due_from_customer) as total_due_from_customer
+    from (
+                 select*
+   				 from  reservation_kpi 
+                 union all
+                 select*
+                 from reservation_sublet
+    
+    )
+    group by
+        1,2
+)
+group by 1
+      
+  ),  data as (  -- Las subtablas "data" y "data2" estan vinculadas SOLO para el campo "total_booking_revenue", NO TIENEN USO PARA LOS DEMAS CAMPOS 
+     select
+      date_trunc('month', (kpis.date)) as date,
+      kpis.destination
+      , kpis.region
+      , sum(booking_value) as rent_revenue
+      
+    from
+      view.financial_performance_kpi as kpis
+        
+    group by
+      1,2,3
+    order by
+      region
+
+  ) , data2 as (
+      select
+      data.date as month       
+      --, data.region
+      , sum(data.rent_revenue) as rent_revenue
+      --, sum(goals.goal * 1000) as goal
+    from
+      data
+      left join public.goals_commission_revenue_csv as goals on
+       date_trunc('month', (data.date)) = to_date(goals.date,'YYYY MM DD')
+      and data.destination = goals.destination
+    group by 1
+                            
+                            
+   ), unionDev as (
+    
+  select
+    nvl(inquiries.date, reservations.date,active.date) as date 
+  , coalesce(inquiries.inquiries, 0) as inquiries
+  , coalesce(reservations.reservations, 0) as reservations
+  , coalesce(reservations.total_rent_amount, 0) as total_rent_amount
+  , coalesce(reservations.oasis_commission_amount, 0) as commission_amount
+  , nvl(nights_stayed, 0) as nights_stayed
+  , nvl(average_daily_revenue, 0) as average_daily_revenue
+  , nvl(total_due_from_customer) as total_due_from_customer
+  , nvl(active_properties,0) as activeproperties
+      , nvl(active_exclusive_properties,0) as activepropertiescontract
+  , coalesce(data2.rent_revenue, 0) as rent_revenue   
+from
+    reservations
+    full outer join inquiries on
+    reservations.date = inquiries.date
+	full outer join active on
+    reservations.date = active.date
+    full outer join activeContract on
+    active.date = activeContract.date
+	full outer join data2 on
+    reservations.date = data2.month
+    
+  )
+  
+                  
+                  
+ select
+  
+   date_trunc('month', to_date(date, 'YYYY MM DD') ) as month 
+  ,sum(activeproperties) as "Active Properties"
+  ,sum(activepropertiescontract) as "Exclusive Properties"
+  , sum(inquiries) as inquiries
+  , sum(reservations) as reservations
+  , sum(reservations) * 1.0 / nullif(sum(inquiries),0) as closing_percent
+  , sum(rent_revenue) as total_booking_revenue                
+  , sum(total_rent_amount) * 1.0 / nullif(sum(reservations),0) as total_rent_per_booking
+  , sum(commission_amount) as commission_amount
+  , sum(commission_amount) * 1.0 / nullif(sum(reservations),0) as avg_commission
+  , sum(total_rent_amount) * 1.0 / nullif(sum(nights_stayed),0) as avg_ADR
+  , sum(nights_stayed) * 1.0 / nullif(sum(reservations),0) as avg_nights
+  
+from
+  unionDev as daily_kpi
+           
+                  
+  where 
+   date_trunc('month', to_date(date, 'YYYY MM DD') ) <= date_trunc('month', to_date(GETDATE(), 'YYYY MM DD') )
+
+group by
+  date_trunc('month', to_date(date, 'YYYY MM DD') )
+  
+  order by date_trunc('month', to_date(date, 'YYYY MM DD') ) desc

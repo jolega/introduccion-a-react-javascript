@@ -1,0 +1,102 @@
+create or replace view view.myvrreservations_non_materialized as 
+select
+  reservations.key as id
+  , homes.name as home_name
+  , reservations.source_name as lead_source
+  , to_date(convert_timezone('est',reservations.created),'YYYY MM DD')  as  date_confirmed
+  , to_char(reservations.created, 'HH12:MI:SS AM') as   time
+  , reservations.modified as modified_timestamp
+  , reservations.status
+  , reservations.customfields_amendedreservationtype as amended_reservation_type
+  , users.firstname || ' ' || users.lastname as agent
+  , reservations.referenceid as res_id
+  , reservations.customfields_vestastaynumber as vesta_stay_number
+  , reservations.inquiry_key as lead_id
+  , reservations.customfields_financelocalcorpinvoicing as local_corp_invoicing
+  , reservations.quote_referenceid as quote_id
+  , homes.destination_name as  destination
+  , homes.city
+  , homes.neighborhood_name as neighborhood 
+  , homes.key as home_id
+  , homes.type
+  , homes.customfields_acontractmanagementtype as contract_management_type
+  , case
+    when status <> 'canceled'
+    and GETDATE() between checkin
+    and checkout
+      then true
+    else false
+  end as home_is_book_now
+  , adults + children as number_of_guests
+  , reservations.firstName || ' ' || reservations.lastName as guest_contact_name
+  , reservations.email as guestemail
+  , reservations.phone as guestphone
+  , reservations.customfields_aliststatusvip as vip  
+  , reservations.customfields_b2bguestnames as b2b_guest_names
+  , reservations.customfields_b2bguestemail as b2b_guest_emails
+  , reservations.customfields_b2bguestphonenumber as b2b_guest_phone_number
+  , reservations.customfields_b2binternalid as b2b_internal_id
+  , reservations.customfields_b2binvoiceaddress as b2b_invoice_address
+  , reservations.customfields_b2binvoiceemail as b2b_invoice_email
+  , reservations.customfields_b2binvoiceinstructions as b2b_invoice_instructions
+  , reservations.customfields_b2binvoicereference as b2b_invoice_reference
+  , reservations.customfields_b2bguestcompany as b2b_guest_company
+  , reservations.customfields_guestarrivalinfo as  guest_arrival_info
+  , reservations.customfields_guestsidekick as guest_sidekick
+  , reservations.customfields_guestdepartureinfo as guest_departure_info
+  , homes.customfields_emaincontact as main_home_contact
+  , homes.owner_name as owner 
+  , homes.customfields_eownerpaymentschedule as owner_payment_schedule
+  , to_date(checkin,'YYYY MM DD') as check_in_date
+  , reservations.checkintime_string as check_in_time
+  , to_date(checkout,'YYYY MM DD') as check_out_date
+  , reservations.checkouttime as check_out_time  
+  , datediff(days, checkin, checkout) as number_of_nights
+  , reservations.currency  
+  , (nvl((reservations.quote_totalrent / 100), 0) * 1.0 / datediff(days, to_date(checkin,'YYYY MM DD'), to_date(checkout,'YYYY MM DD')) )::decimal(10, 2) as ADR
+  , (nvl(reservations.quote_totalrent / 100, 0) )::decimal(10, 2) as gross_booking_value
+  , nvl(commissions.distro_expense_amount, 0) as distro_expense
+  , nvl(commissions.demand_partner_commission_amount, 0 )::decimal(10, 2) as demand_partner_commission_amount
+  , (nvl((reservations.quote_totalrent / 100), 0) + nvl(commissions.demand_partner_commission_amount, 0) )::decimal(8, 2) as net_booking_value
+  , nvl(commissions.oasis_commission_percent, 0 )::decimal(10, 2) as oasis_commission_percent
+  , nvl(commissions.oasis_commission_amount, 0 )::decimal(10, 2) as oasis_commission_amount
+  , (nvl((reservations.quote_totalrent / 100), 0) - nvl(oasis_commission_amount, 0) )::decimal(8, 2) as owner_commission
+  , nvl(line_items.service_fee_amount, 0 )::decimal(10, 2) as oasis_service_fee
+  , nvl(line_items.non_service_fee_amount, 0 )::decimal(10, 2) as concierge_revenue
+  , nvl(homes.owner_cleaning_fee_cln, 0 )::decimal(10, 2) as  owner_cleaning_fee
+  , nvl(line_items.tax_amount, 0 )::decimal(10, 2) as tax_amount
+  , reservations.totaldue/100::decimal(10, 2) as total_due_from_customer
+  , reservations.customfields_utmparams as utm_params
+  , reservations.customfields_vacasamigrated as vacasa_migrated
+  , reservations.customfields_aptorunit as apt_or_unit
+  , reservations.customfields_flatswirebookingreference as flatswire_booking_reference
+  , reservations.customfields_marriottbonvoytier as marriott_bonvoy_tier
+  , reservations.customfields_marriottbonvoymembernumber as marriott_bonvoy_member_number
+  , reservations.customfields_partnerbookingreference as partner_booking_reference 
+  , reservations.customfields_marriottreservationid as marriott_reservation_id
+  , reservations.customfields_b2barrivalcontact as b2b_arrival_contact
+  , us.firstname || ' ' || us.lastname as Assignee
+  , homes.level
+  , homes.region
+  , reservations.allocationstatus
+  , reservations.unit 
+  ,  homes.active
+from
+  public.reservations as reservations
+  left join view.myvrhomes_clean as homes on
+    reservations.property_key = homes.key
+  left join view.line_items as line_items  on
+    reservations.key = line_items.reservations_key
+  left join view.commissions_non_materialized as commissions on
+    reservations.key = commissions.reservation_id
+  left join public.users as users on
+    reservations.customfields_agentconfirmed_key = users.key
+  left join public.users as us on
+    reservations.assigneduser_key = us.key
+where 
+ home_name not like '%Amy%'
+and lower(lead_source) not like '%do_not_use%'
+with no schema binding;   
+
+
+/* ----------------------------------------------- */

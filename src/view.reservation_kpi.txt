@@ -1,0 +1,52 @@
+create or replace view view.reservation_kpi as
+select
+  date_confirmed as date
+, check_in_date as checkin
+, check_out_date as checkout
+  , city
+  , destination
+  , neighborhood
+  , home_name
+  , lead_source
+  , agent
+, contract_management_type
+  , vacasa_migrated
+, active 
+  , count(1) as reservations
+  , sum(number_of_nights) as length_of_stay
+  , avg(number_of_nights) as average_length_of_stay
+  , sum(gross_booking_value * nvl(exchange_rate, 1)) / sum(number_of_nights) as average_daily_revenue
+  , sum(gross_booking_value * nvl(exchange_rate, 1)) as total_rent_amount
+  , sum(oasis_commission_amount * nvl(exchange_rate, 1)) as commission_amount
+ --, sum( ((dev.amount / 100 )::decimal(10, 2) + net_to_owner.oasis_rent_commission_amount ) * nvl(exchange_rate, 1)  )  as commission_amount
+  , sum(total_due_from_customer) as total_due_from_customer
+from
+  view.myvrreservations_non_materialized as reservations
+  left join view.currency_conversion as currency_conversion on
+    reservations.currency = currency_conversion.source_currency
+    and reservations.date_confirmed >= currency_conversion.effective_date
+    and reservations.date_confirmed < currency_conversion.end_date
+  left join view.net_to_owner as net_to_owner on
+        reservations.id = net_to_owner.reservation_id
+ -- left join [oasis_management_adjustment_reservation as dev] on        reservations.id=dev.id
+where
+  lower(status) = 'reserved'
+  and lower(lead_source) not in ('vesta b2b', 'vesta b2c')
+
+group by
+  1
+  , 2
+  , 3
+  , 4
+  , 5
+  , 6
+  , 7
+,8
+,9
+, 10
+, 11
+, 12     
+order by
+  1 desc
+  with no schema binding; 
+/*-----------------------------------------------*/
