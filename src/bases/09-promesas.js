@@ -1,5 +1,5 @@
 
-import { getHeroesById  } from './bases/09-hero'
+import { getHeroesById  } from './09-hero'
 
 
 // Example One
